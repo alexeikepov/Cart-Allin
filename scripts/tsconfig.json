@@ -1,0 +1,28 @@
+{
+  "compilerOptions": {
+    "strictNullChecks": false,
+    "noImplicitAny": false,
+
+    // --- Core Node.js Settings ---
+    "target": "ES2022", // Compile to a modern, stable version of JavaScript that Node.js supports.
+    "module": "commonjs", // The standard module system for Node.js scripts. This is the most critical setting.
+    "moduleResolution": "node", // How TypeScript finds modules. 'node' is the standard for this environment.
+
+    // --- Quality of Life & Best Practices ---
+    "esModuleInterop": true, // Allows for cleaner imports of CommonJS modules (e.g., `import dotenv from 'dotenv'`).
+    "strict": true, // Enables all strict type-checking options. Highly recommended.
+    "skipLibCheck": true, // Speeds up compilation by not type-checking library declaration files (.d.ts).
+    "resolveJsonModule": true, // Allows you to import JSON files directly as modules.
+
+    // --- Script-Specific Settings ---
+    "noEmit": true, // Tells TypeScript not to create .js output files. ts-node compiles in memory and runs, which is perfect for scripts.
+    "isolatedModules": false, // This is a Next.js requirement we don't need or want for our scripts.
+
+    // --- Path Aliases ---
+    "paths": {
+      "@/*": ["../../*"]
+    }
+  },
+  // Tell this config to ONLY apply to TypeScript files within the specified directory.
+  "include": ["**/*.ts", "../../db/types/**/*.d.ts"]
+}

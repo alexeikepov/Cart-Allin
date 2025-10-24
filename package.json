@@ -1,0 +1,36 @@
+{
+  "name": "base",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --turbopack",
+    "build": "next build --turbopack",
+    "start": "next start",
+    "lint": "eslint",
+    "mig": "sh -c 'ts-node scripts/$1' --"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.914.0",
+    "dotenv": "^17.2.3",
+    "knex": "^3.1.0",
+    "next": "15.5.6",
+    "pg": "^8.16.3",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "zvijude": "^0.5.12"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3.3.1",
+    "@tailwindcss/postcss": "^4.1.15",
+    "@types/node": "^20.19.23",
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.2",
+    "babel-plugin-react-compiler": "^1.0.0",
+    "eslint": "^9.38.0",
+    "eslint-config-next": "15.5.6",
+    "tailwind-merge": "^3.3.1",
+    "tailwindcss": "^4.1.15",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
+  }
+}
