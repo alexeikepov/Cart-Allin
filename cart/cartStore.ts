@@ -1,37 +1,71 @@
 import { create } from "zustand";
+import { getUserFullData } from "./action";
 
-interface Product {
+interface CartItem {
   id: number;
   name: string;
   price: number;
-  quantity?: number;
+  quantity: number;
 }
 
 interface CartState {
-  cart: Product[];
-  addItem: (product: Product) => void;
-  removeItem: (id: number) => void;
-  clearCart: () => void;
+  cart: CartItem[];
+  categories: any[];
+  products: any[];
+  serverCart: any[];
+
+  isLoading: boolean;
+
+  addItem: (item: CartItem) => void;
+  setData: (data: {
+    categories?: any[];
+    products?: any[];
+    serverCart?: any[];
+  }) => void;
+  setLoading: (val: boolean) => void;
+  refreshData: () => Promise<void>;
 }
 
 export const useCartStore = create<CartState>((set) => ({
   cart: [],
-  addItem: (product) =>
+  categories: [],
+  products: [],
+  serverCart: [],
+  isLoading: false,
+
+  addItem: (item) =>
     set((state) => {
-      const existing = state.cart.find((p) => p.id === product.id);
+      const existing = state.cart.find((i) => i.id === item.id);
       if (existing) {
         return {
-          cart: state.cart.map((p) =>
-            p.id === product.id ? { ...p, quantity: (p.quantity || 1) + 1 } : p
+          cart: state.cart.map((i) =>
+            i.id === item.id ? { ...i, quantity: i.quantity + 1 } : i
           ),
         };
-      } else {
-        return { cart: [...state.cart, { ...product, quantity: 1 }] };
       }
+      return { cart: [...state.cart, { ...item, quantity: 1 }] };
     }),
-  removeItem: (id) =>
+
+  setData: (data) =>
     set((state) => ({
-      cart: state.cart.filter((p) => p.id !== id),
+      categories: data.categories ?? state.categories,
+      products: data.products ?? state.products,
+      serverCart: data.serverCart ?? state.serverCart,
     })),
-  clearCart: () => set({ cart: [] }),
+
+  setLoading: (val) => set({ isLoading: val }),
+
+  refreshData: async () => {
+    set({ isLoading: true });
+    try {
+      const data = await getUserFullData();
+      set({
+        categories: data.categories,
+        products: data.products,
+        serverCart: data.cart,
+      });
+    } finally {
+      set({ isLoading: false });
+    }
+  },
 }));

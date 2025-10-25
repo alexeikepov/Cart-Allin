@@ -67,16 +67,16 @@ async function test() {
     //   table.timestamp("createdAt").defaultTo(db.fn.now());
     // });
 
-    await db.schema.alterTable("cart_items", (table) => {
-      table
-        .integer("cartId")
-        .unsigned()
-        .references("id")
-        .inTable("carts")
-        .onDelete("CASCADE");
-    });
+    // await db.schema.alterTable("cart_items", (table) => {
+    //   table
+    //     .integer("cartId")
+    //     .unsigned()
+    //     .references("id")
+    //     .inTable("carts")
+    //     .onDelete("CASCADE");
+    // });
 
-  console.log("data", data);
+    console.log("data", data);
 
   console.log("done");
   db.destroy();

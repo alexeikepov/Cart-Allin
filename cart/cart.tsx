@@ -9,7 +9,6 @@ import {
   deleteCategory,
   confirmOrder,
 } from "./action";
-
 import { Card, CardHeader, CardContent, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,7 +26,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import OrdersTabs from "@/components/orders-tab";
+import CartModal from "@/components/cart-modal";
 
 interface Product {
   id: number;
@@ -53,12 +52,26 @@ export default function MainComp({
   products?: Product[];
   serverCart?: any[];
 }) {
-  const { cart, addItem } = useCartStore();
+  const {
+    cart,
+    addItem,
+    categories: catState,
+    products: prodState,
+    serverCart: cartState,
+    setData,
+    refreshData,
+  } = useCartStore();
+
+  // инициализируем Zustand начальными данными
+  if (catState.length === 0 && categories.length > 0) {
+    setData({ categories, products, serverCart });
+  }
 
   async function handleAddCategory(e: any) {
     e.preventDefault();
     const data = getFormData(e);
     await addCategory(data);
+    await refreshData();
     e.target.reset();
   }
 
@@ -66,21 +79,29 @@ export default function MainComp({
     e.preventDefault();
     const data = getFormData(e);
     await addProduct(data);
+    await refreshData();
     e.target.reset();
   }
 
   async function handleAddToCart(productId: number, product: Product) {
-    await addToCart(productId);
-    addItem(product);
+    const serverProduct = await addToCart(productId);
+    addItem({
+      id: serverProduct.id,
+      name: serverProduct.name,
+      price: serverProduct.price,
+      quantity: 1,
+    });
+    await refreshData();
   }
 
   async function handleDeleteCategory(categoryId: number) {
     await deleteCategory(categoryId);
+    await refreshData();
   }
 
   async function handleConfirmOrder() {
     await confirmOrder();
-    window.location.reload();
+    await refreshData();
   }
 
   return (
@@ -133,8 +154,8 @@ export default function MainComp({
                 <SelectValue placeholder="Select category..." />
               </SelectTrigger>
               <SelectContent>
-                {categories.map((c) => (
-                  <SelectItem key={c.id} value={String(c.id)}>
+                {catState.map((c) => (
+                  <SelectItem key={`cat-opt-${c.id}`} value={String(c.id)}>
                     {c.name}
                   </SelectItem>
                 ))}
@@ -148,10 +169,10 @@ export default function MainComp({
       </Card>
 
       {/* ====== CATEGORIES & PRODUCTS ====== */}
-      {categories.map((cat) => {
-        const catProducts = products.filter((p) => p.categoryId === cat.id);
+      {catState.map((cat) => {
+        const catProducts = prodState.filter((p) => p.categoryId === cat.id);
         return (
-          <Card key={cat.id} className="w-full">
+          <Card key={`cat-${cat.id}`} className="w-full">
             <CardHeader className="flex justify-between flex-row items-center">
               <CardTitle>
                 {cat.name} ({catProducts.length})
@@ -171,7 +192,7 @@ export default function MainComp({
               ) : (
                 catProducts.map((p) => (
                   <Card
-                    key={p.id}
+                    key={`prod-${p.id}-${cat.id}`}
                     className="flex justify-between items-center p-3 bg-gray-50 hover:bg-gray-100 transition"
                   >
                     <span>
@@ -195,7 +216,7 @@ export default function MainComp({
       {/* ====== CART SECTION ====== */}
       <Card className="w-full mt-8 border-t">
         <CardHeader className="flex justify-between items-center">
-          <CardTitle>🛒 Cart ({cart.length || serverCart.length})</CardTitle>
+          <CardTitle>🛒 Cart ({cart.length || cartState.length})</CardTitle>
           <div className="flex gap-3">
             <Button
               className="bg-emerald-600 text-white"
@@ -206,29 +227,30 @@ export default function MainComp({
 
             <Dialog>
               <DialogTrigger asChild>
-                <Button className="bg-indigo-500 text-white">
-                  🧾 My Orders
-                </Button>
+                <Button className="bg-indigo-500 text-white">🛒 My Cart</Button>
               </DialogTrigger>
               <DialogContent className="max-w-3xl">
                 <DialogHeader>
-                  <DialogTitle>My Orders</DialogTitle>
+                  <DialogTitle>My Cart</DialogTitle>
                 </DialogHeader>
-                <OrdersTabs />
+                <CartModal />
               </DialogContent>
             </Dialog>
           </div>
         </CardHeader>
 
         <CardContent>
-          {cart.length === 0 && serverCart.length === 0 ? (
+          {cart.length === 0 && cartState.length === 0 ? (
             <p className="text-gray-500 italic">Your cart is empty</p>
           ) : (
             <div className="space-y-2">
-              {(cart.length > 0 ? cart : serverCart).map((item) => (
-                <Card key={item.id} className="flex justify-between p-3">
+              {(cart.length > 0 ? cart : cartState).map((item) => (
+                <Card
+                  key={`cart-${item.id}-${item.productId || item.name}`}
+                  className="flex justify-between p-3"
+                >
                   <span>
-                    {item.name} — <b>${item.price}</b>
+                    {item.name || item.productName} — <b>${item.price}</b>
                   </span>
                   <span>x{item.quantity ?? 1}</span>
                 </Card>

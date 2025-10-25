@@ -30,7 +30,8 @@ export async function connectUser(data: any) {
 
   cookieStore.set("user_id", String(user.id), {
     path: "/",
-    httpOnly: false,
+    httpOnly: true,
+    sameSite: "lax",
     maxAge: 60 * 60 * 24 * 7,
   });
 
@@ -110,10 +111,21 @@ export async function addToCart(productId: number) {
       productId: Number(productId),
       quantity: 1,
       status: "in_cart",
+      cartId: null,
     });
   }
 
   revalidatePath("/shop");
+
+  const info = await db.raw(`
+  SELECT column_default 
+  FROM information_schema.columns 
+  WHERE table_name = 'cart_items' AND column_name = 'status';
+`);
+  console.log("🧾 Default status is:", info.rows[0].column_default);
+
+  const product = await db("products").where("id", productId).first();
+  return product;
 }
 
 export async function getCart() {
@@ -144,34 +156,48 @@ export async function removeFromCart(cartItemId: number) {
 export async function confirmOrder() {
   const cookieStore = await cookies();
   const userId = cookieStore.get("user_id")?.value;
-  if (!userId) throw new Error("Not authorized");
 
-  const items = await db("cart_items").where({
-    userId: Number(userId),
-    status: "in_cart",
-  });
+  const parsedUserId = parseInt(userId as string, 10);
 
-  if (items.length === 0) throw new Error("Cart is empty");
+  const all = await db("cart_items").orderBy("id", "desc");
+  console.log("🧾 ALL ITEMS:", all);
+
+  const items = await db("cart_items")
+    .where("userId", "=", parsedUserId)
+    .andWhere("status", "=", "in_cart")
+    .whereNull("cartId");
+
+  console.log("🧩 Found cart items for user", parsedUserId, items);
+
+  if (!items || items.length === 0) {
+    throw new Error("Cart is empty — no active 'in_cart' items.");
+  }
 
   const [newCart] = await db("carts")
     .insert({
-      userId: Number(userId),
-      status: "ordered",
+      userId: parsedUserId,
+      status: "waiting_payment",
       createdAt: db.fn.now(),
     })
     .returning("*");
 
   await db("cart_items")
-    .where({ userId: Number(userId), status: "in_cart" })
+    .where("userId", "=", parsedUserId)
+    .andWhere("status", "=", "in_cart")
+    .whereNull("cartId")
     .update({
       cartId: newCart.id,
-      status: "ordered",
+      status: "waiting_payment",
     });
+
+  console.log(
+    `✅ Created new cart #${newCart.id} for user ${parsedUserId} with ${items.length} items`
+  );
 
   revalidatePath("/shop");
 }
 
-export async function updateOrderStatus(orderId: number, newStatus: string) {
+export async function updateOrderStatus(cartId: number, newStatus: string) {
   const valid = ["waiting_payment", "ordered", "received"];
   if (!valid.includes(newStatus)) throw new Error("Invalid status");
 
@@ -179,8 +205,12 @@ export async function updateOrderStatus(orderId: number, newStatus: string) {
   const userId = cookieStore.get("user_id")?.value;
   if (!userId) throw new Error("Not authorized");
 
+  await db("carts")
+    .where({ id: cartId, userId: Number(userId) })
+    .update({ status: newStatus });
+
   await db("cart_items")
-    .where({ id: orderId, userId: Number(userId) })
+    .where({ cartId, userId: Number(userId) })
     .update({ status: newStatus });
 
   revalidatePath("/shop");
@@ -197,7 +227,7 @@ export async function getOrders() {
     .orderBy("createdAt", "desc");
 
   const cartsWithItems = await Promise.all(
-    carts.map(async (cart) => {
+    carts.map(async (cart: any) => {
       const items = await db("cart_items")
         .join("products", "cart_items.productId", "products.id")
         .select(
