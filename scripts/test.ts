@@ -20,14 +20,60 @@ async function test() {
     //     .onDelete("CASCADE"); // если юзер удалится — его todo тоже удалятся
     // });
 
-    await db.schema.alterTable("categories", (table) => {
-      // Добавляем user_id и связываем с таблицей users
+    // await db.schema.alterTable("categories", (table) => {
+    //   table
+    //     .integer("user_id")
+    //     .unsigned()
+    //     .references("id") // связываем с колонкой id
+    //     .inTable("users") // из таблицы users
+    //     .onDelete("CASCADE"); // если юзер удалится — его categories тоже удалятся
+    // });
+
+    //   await db.schema.createTable("products", (table) => {
+    //     table.increments("id");
+    //     table.string("name").notNullable();
+    //     table.decimal("price", 10, 2).notNullable();
+    //     table
+    //       .integer("categoryId")
+    //       .references("id")
+    //       .inTable("categories")
+    //       .onDelete("SET NULL");
+    //     table.timestamp("createdAt").defaultTo(db.fn.now());
+    //   });
+    // console.log("✅ Table 'products' created");
+
+    // await db.schema.createTable("cart_items", (table) => {
+    //   table.increments("id");
+    //   table
+    //     .integer("userId")
+    //     .references("id")
+    //     .inTable("users")
+    //     .onDelete("CASCADE");
+    //   table
+    //     .integer("productId")
+    //     .references("id")
+    //     .inTable("products")
+    //     .onDelete("CASCADE");
+    //   table.integer("quantity").notNullable().defaultTo(1);
+    //   table.string("status").defaultTo("in_cart");
+    //   table.timestamp("createdAt").defaultTo(db.fn.now());
+    // });
+    // console.log("✅ Table 'cart_items' created");
+
+    // await db.schema.createTable("carts", (table) => {
+    //   table.increments("id").primary();
+    //   table.integer("userId").notNullable();
+    //   table.string("status").defaultTo("in_cart");
+    //   table.timestamp("createdAt").defaultTo(db.fn.now());
+    // });
+
+    await db.schema.alterTable("cart_items", (table) => {
       table
-        .integer("user_id")
+        .integer("cartId")
         .unsigned()
-        .references("id") // связываем с колонкой id
-        .inTable("users") // из таблицы users
-        .onDelete("CASCADE"); // если юзер удалится — его categories тоже удалятся
+        .references("id")
+        .inTable("carts")
+        .onDelete("CASCADE");
     });
 
   console.log("data", data);
