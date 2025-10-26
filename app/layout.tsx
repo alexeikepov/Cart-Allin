@@ -1,15 +1,18 @@
 import { Assistant } from "next/font/google";
 import "../ui/main.css";
+import { Toaster } from "@/components/ui/sonner";
 
-const font = Assistant({
-  variable: "--font-geist-sans",
-  subsets: ["hebrew"],
-});
-
-export default function RootLayout({ children }) {
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
     <html lang="en">
-      <body className={`${font.variable} antialiased`}>{children}</body>
+      <body>
+        {children}
+        <Toaster richColors position="top-right" />{" "}
+      </body>
     </html>
   );
 }

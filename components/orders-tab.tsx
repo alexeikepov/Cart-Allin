@@ -22,39 +22,69 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { getOrders, updateOrderStatus } from "@/cart/action";
+import { getOrders, updateCartStatus, addToCart } from "@/cart/action";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 
 export default function OrdersTabs() {
   const [orders, setOrders] = useState<any[]>([]);
   const [loadingId, setLoadingId] = useState<number | null>(null);
+  const router = useRouter();
 
   useEffect(() => {
     (async () => {
-      const res = await getOrders();
-      setOrders(res);
+      try {
+        const res = await getOrders();
+        setOrders(res);
+      } catch (err) {
+        console.error("Error loading orders:", err);
+        toast.error("❌ Failed to load orders");
+      }
     })();
   }, []);
 
   async function handleStatusChange(cartId: number, newStatus: string) {
-    setLoadingId(cartId);
-    await updateOrderStatus(cartId, newStatus);
-    setOrders((prev) =>
-      prev.map((cart) =>
-        cart.cartId === cartId ? { ...cart, status: newStatus } : cart
-      )
-    );
-    setLoadingId(null);
+    try {
+      setLoadingId(cartId);
+      await updateCartStatus(cartId, newStatus);
+      setOrders((prev) =>
+        prev.map((cart) =>
+          cart.cartId === cartId ? { ...cart, status: newStatus } : cart
+        )
+      );
+      toast.success(`✅ Order #${cartId} → ${newStatus.toUpperCase()}`);
+    } catch (err) {
+      console.error("Error updating status:", err);
+      toast.error("❌ Could not update order status");
+    } finally {
+      setLoadingId(null);
+    }
+  }
+
+  async function handleRepeatOrder(items: any[]) {
+    try {
+      for (const item of items) {
+        await addToCart(item.productId);
+      }
+      toast.info("🛒 All items added back to your cart!");
+      router.push("/shop");
+    } catch (err) {
+      console.error("Error repeating order:", err);
+      toast.error("❌ Failed to repeat order");
+    }
   }
 
   const tabs = [
     { key: "waiting_payment", label: "💳 Waiting Payment" },
-    { key: "ordered", label: "📦 Ordered" },
-    { key: "received", label: "✅ Received" },
+    { key: "paid", label: "💰 Paid" },
+    { key: "shipped", label: "📦 Shipped" },
+    { key: "completed", label: "✅ Completed" },
+    { key: "cancelled", label: "❌ Cancelled" },
   ];
 
   return (
-    <Tabs defaultValue="ordered" className="mt-4">
-      <TabsList className="grid grid-cols-3 mb-4">
+    <Tabs defaultValue="waiting_payment" className="mt-6">
+      <TabsList className="grid grid-cols-5 mb-4">
         {tabs.map((t) => (
           <TabsTrigger key={t.key} value={t.key}>
             {t.label}
@@ -65,7 +95,7 @@ export default function OrdersTabs() {
       {tabs.map((t) => (
         <TabsContent key={t.key} value={t.key}>
           {orders.filter((o) => o.status === t.key).length === 0 ? (
-            <p className="text-gray-500 italic">No orders here</p>
+            <p className="text-gray-500 italic">No orders in this tab.</p>
           ) : (
             orders
               .filter((o) => o.status === t.key)
@@ -83,82 +113,73 @@ export default function OrdersTabs() {
                     <div className="flex justify-between items-center mb-3">
                       <div>
                         <h3 className="font-semibold text-lg">
-                          Cart #{cart.cartId}
+                          Order #{cart.cartId}
                         </h3>
                         <p className="text-sm text-gray-500">
                           {new Date(cart.createdAt).toLocaleString()}
                         </p>
                       </div>
-                      <div>
+
+                      <div className="flex gap-2">
                         {cart.status === "waiting_payment" && (
-                          <AlertDialog>
-                            <AlertDialogTrigger asChild>
-                              <Button
-                                size="sm"
-                                disabled={loadingId === cart.cartId}
-                              >
-                                Confirm
-                              </Button>
-                            </AlertDialogTrigger>
-                            <AlertDialogContent>
-                              <AlertDialogHeader>
-                                <AlertDialogTitle>
-                                  Confirm purchase?
-                                </AlertDialogTitle>
-                                <AlertDialogDescription>
-                                  Are you sure you want to confirm this order?
-                                  After confirmation it will move to
-                                  <b> "Ordered"</b> status.
-                                </AlertDialogDescription>
-                              </AlertDialogHeader>
-                              <AlertDialogFooter>
-                                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                <AlertDialogAction
-                                  onClick={() =>
-                                    handleStatusChange(cart.cartId, "ordered")
-                                  }
-                                >
-                                  Yes, Confirm
-                                </AlertDialogAction>
-                              </AlertDialogFooter>
-                            </AlertDialogContent>
-                          </AlertDialog>
+                          <>
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              disabled={loadingId === cart.cartId}
+                              onClick={() =>
+                                handleStatusChange(cart.cartId, "paid")
+                              }
+                            >
+                              💰 Mark Paid
+                            </Button>
+
+                            <Button
+                              size="sm"
+                              variant="destructive"
+                              disabled={loadingId === cart.cartId}
+                              onClick={() =>
+                                handleStatusChange(cart.cartId, "cancelled")
+                              }
+                            >
+                              ❌ Cancel
+                            </Button>
+                          </>
                         )}
 
-                        {cart.status === "ordered" && (
-                          <AlertDialog>
-                            <AlertDialogTrigger asChild>
-                              <Button
-                                variant="secondary"
-                                size="sm"
-                                disabled={loadingId === cart.cartId}
-                              >
-                                Received
-                              </Button>
-                            </AlertDialogTrigger>
-                            <AlertDialogContent>
-                              <AlertDialogHeader>
-                                <AlertDialogTitle>
-                                  Mark as received?
-                                </AlertDialogTitle>
-                                <AlertDialogDescription>
-                                  Are you sure this order has been received?
-                                  This action will mark it as
-                                  <b> "Received"</b>.
-                                </AlertDialogDescription>
-                              </AlertDialogHeader>
-                              <AlertDialogFooter>
-                                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                <AlertDialogAction
-                                  onClick={() =>
-                                    handleStatusChange(cart.cartId, "received")
-                                  }
-                                >
-                                  Yes, Received
-                                </AlertDialogAction>
-                              </AlertDialogFooter>
-                            </AlertDialogContent>
-                          </AlertDialog>
+                        {cart.status === "paid" && (
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            disabled={loadingId === cart.cartId}
+                            onClick={() =>
+                              handleStatusChange(cart.cartId, "shipped")
+                            }
+                          >
+                            📦 Mark Shipped
+                          </Button>
+                        )}
+
+                        {cart.status === "shipped" && (
+                          <Button
+                            size="sm"
+                            className="bg-green-600 text-white"
+                            disabled={loadingId === cart.cartId}
+                            onClick={() =>
+                              handleStatusChange(cart.cartId, "completed")
+                            }
+                          >
+                            ✅ Complete
+                          </Button>
+                        )}
+
+                        {cart.status === "completed" && (
+                          <Button
+                            size="sm"
+                            onClick={() => handleRepeatOrder(cart.items)}
+                          >
+                            🔁 Repeat Order
+                          </Button>
                         )}
                       </div>
                     </div>
@@ -188,7 +209,7 @@ export default function OrdersTabs() {
                             colSpan={3}
                             className="font-semibold text-right"
                           >
-                            Cart Total:
+                            Order Total:
                           </TableCell>
                           <TableCell className="font-bold">
                             ${total.toFixed(2)}

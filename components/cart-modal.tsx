@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getCart, confirmOrder } from "@/cart/action";
+import { getCart, confirmOrder, removeFromCart } from "@/cart/action";
 import {
   Table,
   TableHeader,
@@ -22,25 +22,62 @@ import {
   AlertDialogCancel,
   AlertDialogAction,
 } from "@/components/ui/alert-dialog";
+import { toast } from "sonner";
 
 export default function CartModal() {
   const [cart, setCart] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [confirming, setConfirming] = useState(false);
+  const [removing, setRemoving] = useState<number | null>(null);
 
   useEffect(() => {
-    (async () => {
+    loadCart();
+  }, []);
+
+  async function loadCart() {
+    try {
       const res = await getCart();
       setCart(res);
-    })();
-  }, []);
+    } catch (err) {
+      console.error("Error loading cart:", err);
+      toast.error("❌ Failed to load cart");
+    } finally {
+      setLoading(false);
+    }
+  }
 
   const total = cart.reduce((sum, i) => sum + i.price * i.quantity, 0);
 
+  async function handleRemove(cartItemId: number) {
+    try {
+      setRemoving(cartItemId);
+      await removeFromCart(cartItemId);
+      toast.success("🗑️ Item removed from cart");
+      await loadCart();
+    } catch (err) {
+      console.error("Error removing item:", err);
+      toast.error("❌ Failed to remove item");
+    } finally {
+      setRemoving(null);
+    }
+  }
+
   async function handleConfirm() {
-    setLoading(true);
-    await confirmOrder(); // создаёт carts + привязывает cart_items
-    setLoading(false);
-    window.location.reload();
+    try {
+      setConfirming(true);
+      await confirmOrder();
+      toast.success("✅ Order confirmed and moved to 'My Orders'");
+      setTimeout(() => window.location.reload(), 1000);
+    } catch (err) {
+      console.error("Error confirming order:", err);
+      toast.error("❌ Failed to confirm order");
+    } finally {
+      setConfirming(false);
+    }
+  }
+
+  if (loading) {
+    return <p className="text-gray-500 italic">Loading your cart...</p>;
   }
 
   return (
@@ -56,6 +93,7 @@ export default function CartModal() {
                 <TableHead>Price</TableHead>
                 <TableHead>Qty</TableHead>
                 <TableHead>Total</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -67,10 +105,22 @@ export default function CartModal() {
                   <TableCell>
                     ${(item.price * item.quantity).toFixed(2)}
                   </TableCell>
+                  <TableCell className="text-right">
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      disabled={removing === item.cartItemId}
+                      onClick={() => handleRemove(item.cartItemId)}
+                    >
+                      {removing === item.cartItemId
+                        ? "Removing..."
+                        : "🗑️ Remove"}
+                    </Button>
+                  </TableCell>
                 </TableRow>
               ))}
               <TableRow>
-                <TableCell colSpan={3} className="font-semibold text-right">
+                <TableCell colSpan={4} className="font-semibold text-right">
                   Cart Total:
                 </TableCell>
                 <TableCell className="font-bold">${total.toFixed(2)}</TableCell>
@@ -81,25 +131,30 @@ export default function CartModal() {
           <AlertDialog>
             <AlertDialogTrigger asChild>
               <Button
-                disabled={loading}
+                disabled={confirming}
                 className="bg-emerald-600 text-white mt-4 w-full"
               >
-                ✅ Confirm Order
+                {confirming ? "Processing..." : "✅ Confirm Order"}
               </Button>
             </AlertDialogTrigger>
+
             <AlertDialogContent>
               <AlertDialogHeader>
                 <AlertDialogTitle>Confirm your order?</AlertDialogTitle>
                 <AlertDialogDescription>
-                  Please make sure all items in your cart are correct. Once
-                  confirmed, your order will be created and moved to “My
-                  Orders”.
+                  Please verify all items before confirming. Once approved, your
+                  order will move to <b>“My Orders”</b>.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction onClick={handleConfirm}>
-                  Yes, Confirm
+                <AlertDialogCancel disabled={confirming}>
+                  Cancel
+                </AlertDialogCancel>
+                <AlertDialogAction
+                  disabled={confirming}
+                  onClick={handleConfirm}
+                >
+                  {confirming ? "Processing..." : "Yes, Confirm"}
                 </AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>

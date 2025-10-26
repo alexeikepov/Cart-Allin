@@ -25,9 +25,7 @@ export async function connectUser(data: any) {
   }
 
   const cookieStore = await cookies();
-
   cookieStore.set("user_id", "", { path: "/", maxAge: 0 });
-
   cookieStore.set("user_id", String(user.id), {
     path: "/",
     httpOnly: true,
@@ -76,6 +74,40 @@ export async function addProduct(data: any) {
   revalidatePath("/shop");
 }
 
+export async function updateProductCategory(
+  productId: number,
+  newCategoryId: number
+) {
+  if (!productId || !newCategoryId)
+    throw new Error("Invalid product/category ID");
+
+  await db("products")
+    .where("id", productId)
+    .update({ categoryId: newCategoryId });
+
+  revalidatePath("/shop");
+}
+
+export async function updateProduct(data: any) {
+  const id = Number(data.id);
+  const name = String(data.name ?? "").trim();
+  const price = Number(data.price);
+  const categoryId = data.categoryId ? Number(data.categoryId) : null;
+
+  if (!id) throw new Error("Missing product ID");
+  if (!name) throw new Error("Product name required");
+  if (isNaN(price) || price <= 0) throw new Error("Valid price required");
+
+  await db("products").where({ id }).update({
+    name,
+    price,
+    categoryId,
+    updatedAt: db.fn.now(),
+  });
+
+  return { id, name, price, categoryId };
+}
+
 export async function getProducts() {
   return db("products")
     .leftJoin("categories", "products.categoryId", "categories.id")
@@ -92,13 +124,30 @@ export async function addToCart(productId: number) {
   const cookieStore = await cookies();
   const userId = cookieStore.get("user_id")?.value;
   if (!userId) throw new Error("Not authorized");
+  const parsedUserId = Number(userId);
+
+  await db("carts")
+    .where({ userId: parsedUserId, status: "active" })
+    .first()
+    .update({});
+
+  let cart = await db("carts")
+    .where({ userId: parsedUserId, status: "active" })
+    .first();
+
+  if (!cart) {
+    const [newCart] = await db("carts")
+      .insert({
+        userId: parsedUserId,
+        status: "active",
+        createdAt: db.fn.now(),
+      })
+      .returning("*");
+    cart = newCart;
+  }
 
   const existing = await db("cart_items")
-    .where({
-      userId: Number(userId),
-      productId: Number(productId),
-      status: "in_cart",
-    })
+    .where({ cartId: cart.id, productId })
     .first();
 
   if (existing) {
@@ -107,22 +156,14 @@ export async function addToCart(productId: number) {
       .update({ quantity: existing.quantity + 1 });
   } else {
     await db("cart_items").insert({
-      userId: Number(userId),
-      productId: Number(productId),
+      cartId: cart.id,
+      productId,
       quantity: 1,
-      status: "in_cart",
-      cartId: null,
+      createdAt: db.fn.now(),
     });
   }
 
   revalidatePath("/shop");
-
-  const info = await db.raw(`
-  SELECT column_default 
-  FROM information_schema.columns 
-  WHERE table_name = 'cart_items' AND column_name = 'status';
-`);
-  console.log("🧾 Default status is:", info.rows[0].column_default);
 
   const product = await db("products").where("id", productId).first();
   return product;
@@ -132,6 +173,13 @@ export async function getCart() {
   const cookieStore = await cookies();
   const userId = cookieStore.get("user_id")?.value;
   if (!userId) throw new Error("Not authorized");
+  const parsedUserId = Number(userId);
+
+  const cart = await db("carts")
+    .where({ userId: parsedUserId, status: "active" })
+    .first();
+
+  if (!cart) return [];
 
   return db("cart_items")
     .join("products", "cart_items.productId", "products.id")
@@ -140,11 +188,9 @@ export async function getCart() {
       "products.name as productName",
       "products.price",
       "cart_items.quantity",
-      "cart_items.status",
       "cart_items.createdAt"
     )
-    .where("cart_items.userId", Number(userId))
-    .andWhere("cart_items.status", "in_cart")
+    .where("cart_items.cartId", cart.id)
     .orderBy("cart_items.createdAt", "desc");
 }
 
@@ -156,49 +202,50 @@ export async function removeFromCart(cartItemId: number) {
 export async function confirmOrder() {
   const cookieStore = await cookies();
   const userId = cookieStore.get("user_id")?.value;
+  if (!userId) throw new Error("Not authorized");
 
-  const parsedUserId = parseInt(userId as string, 10);
+  const parsedUserId = Number(userId);
 
-  const all = await db("cart_items").orderBy("id", "desc");
-  console.log("🧾 ALL ITEMS:", all);
+  const activeCart = await db("carts")
+    .where({ userId: parsedUserId, status: "active" })
+    .first();
+
+  if (!activeCart) throw new Error("No active cart found");
 
   const items = await db("cart_items")
-    .where("userId", "=", parsedUserId)
-    .andWhere("status", "=", "in_cart")
-    .whereNull("cartId");
-
-  console.log("🧩 Found cart items for user", parsedUserId, items);
+    .where({ cartId: activeCart.id })
+    .orderBy("id", "asc");
 
   if (!items || items.length === 0) {
-    throw new Error("Cart is empty — no active 'in_cart' items.");
+    throw new Error("Cart is empty");
   }
 
-  const [newCart] = await db("carts")
-    .insert({
-      userId: parsedUserId,
-      status: "waiting_payment",
-      createdAt: db.fn.now(),
-    })
-    .returning("*");
+  await db("carts")
+    .where({ id: activeCart.id })
+    .update({ status: "waiting_payment" });
 
-  await db("cart_items")
-    .where("userId", "=", parsedUserId)
-    .andWhere("status", "=", "in_cart")
-    .whereNull("cartId")
-    .update({
-      cartId: newCart.id,
-      status: "waiting_payment",
-    });
+  await db("carts").insert({
+    userId: parsedUserId,
+    status: "active",
+    createdAt: db.fn.now(),
+  });
 
   console.log(
-    `✅ Created new cart #${newCart.id} for user ${parsedUserId} with ${items.length} items`
+    `✅ Cart #${activeCart.id} confirmed for user ${parsedUserId}. New empty cart created.`
   );
 
   revalidatePath("/shop");
 }
 
-export async function updateOrderStatus(cartId: number, newStatus: string) {
-  const valid = ["waiting_payment", "ordered", "received"];
+export async function updateCartStatus(cartId: number, newStatus: string) {
+  const valid = [
+    "active",
+    "waiting_payment",
+    "paid",
+    "cancelled",
+    "shipped",
+    "completed",
+  ];
   if (!valid.includes(newStatus)) throw new Error("Invalid status");
 
   const cookieStore = await cookies();
@@ -209,10 +256,6 @@ export async function updateOrderStatus(cartId: number, newStatus: string) {
     .where({ id: cartId, userId: Number(userId) })
     .update({ status: newStatus });
 
-  await db("cart_items")
-    .where({ cartId, userId: Number(userId) })
-    .update({ status: newStatus });
-
   revalidatePath("/shop");
 }
 
@@ -220,10 +263,12 @@ export async function getOrders() {
   const cookieStore = await cookies();
   const userId = cookieStore.get("user_id")?.value;
   if (!userId) throw new Error("Not authorized");
+  const parsedUserId = Number(userId);
 
   const carts = await db("carts")
     .select("id as cartId", "status", "createdAt")
-    .where("userId", Number(userId))
+    .where("userId", parsedUserId)
+    .andWhereNot("status", "active")
     .orderBy("createdAt", "desc");
 
   const cartsWithItems = await Promise.all(
@@ -269,19 +314,28 @@ export async function getUserFullData() {
     )
     .orderBy("products.id", "asc");
 
-  const cart = await db("cart_items")
-    .join("products", "cart_items.productId", "products.id")
-    .select(
-      "cart_items.id as cartItemId",
-      "products.name as productName",
-      "products.price",
-      "cart_items.quantity",
-      "cart_items.status",
-      "cart_items.createdAt"
-    )
-    .where("cart_items.userId", Number(userId))
-    .andWhere("cart_items.status", "in_cart")
-    .orderBy("cart_items.createdAt", "desc");
+  const activeCart = await db("carts")
+    .where({ userId: Number(userId), status: "active" })
+    .first();
 
-  return { username: user?.user || "User", categories, products, cart };
+  const cartItems = activeCart
+    ? await db("cart_items")
+        .join("products", "cart_items.productId", "products.id")
+        .select(
+          "cart_items.id as cartItemId",
+          "products.name as productName",
+          "products.price",
+          "cart_items.quantity",
+          "cart_items.createdAt"
+        )
+        .where("cart_items.cartId", activeCart.id)
+        .orderBy("cart_items.createdAt", "desc")
+    : [];
+
+  return {
+    username: user?.user || "User",
+    categories,
+    products,
+    cart: cartItems,
+  };
 }

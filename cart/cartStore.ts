@@ -26,7 +26,7 @@ interface CartState {
   refreshData: () => Promise<void>;
 }
 
-export const useCartStore = create<CartState>((set) => ({
+export const useCartStore = create<CartState>((set, get) => ({
   cart: [],
   categories: [],
   products: [],
@@ -56,6 +56,9 @@ export const useCartStore = create<CartState>((set) => ({
   setLoading: (val) => set({ isLoading: val }),
 
   refreshData: async () => {
+    const { isLoading } = get();
+    if (isLoading) return;
+
     set({ isLoading: true });
     try {
       const data = await getUserFullData();
@@ -64,6 +67,8 @@ export const useCartStore = create<CartState>((set) => ({
         products: data.products,
         serverCart: data.cart,
       });
+    } catch (err) {
+      console.error("Error refreshing data:", err);
     } finally {
       set({ isLoading: false });
     }
