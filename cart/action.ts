@@ -13,7 +13,6 @@ interface User {
 
 export async function connectUser(data: any) {
   const username = data.username?.trim();
-  if (!username) throw new Error("Username required");
 
   let user = await db<User>("users").where("user", username).first();
 
@@ -29,7 +28,6 @@ export async function connectUser(data: any) {
   cookieStore.set("user_id", String(user.id), {
     path: "/",
     httpOnly: true,
-    sameSite: "lax",
     maxAge: 60 * 60 * 24 * 7,
   });
 
@@ -164,9 +162,6 @@ export async function addToCart(productId: number) {
   }
 
   revalidatePath("/shop");
-
-  const product = await db("products").where("id", productId).first();
-  return product;
 }
 
 export async function getCart() {
